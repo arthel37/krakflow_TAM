@@ -4,6 +4,51 @@ void main() {
   runApp(const MyApp());
 }
 
+List<Task> tasks = [
+  Task(
+    title: "Projekt Flutter",
+    deadline: "Jutro",
+    done: false,
+    priority: "Wysoki",
+  ),
+  Task(
+    title: "Ćwiczenia z matematyki",
+    deadline: "Dzisiaj",
+    done: false,
+    priority: "Średni",
+  ),
+  Task(
+    title: "Przeczytać o widgetach",
+    deadline: "W tym tygodniu",
+    done: false,
+    priority: "Niski",
+  ),
+  Task(
+    title: "Poodkurzać",
+    deadline: "W tym roku",
+    done: false,
+    priority: "Niski",
+  ),
+  Task(
+    title: "Iść na zakupy",
+    deadline: "Dzisiaj",
+    done: false,
+    priority: "Wysoki",
+  ),
+  Task(
+    title: "Ponudzić się trochę",
+    deadline: "Kiedykolwiek",
+    done: false,
+    priority: "Średni",
+  ),
+  Task(
+    title: "Wyjść na piwo",
+    deadline: "Wczoraj",
+    done: true,
+    priority: "Wysoki",
+  ),
+];
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -11,40 +56,70 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'KrakFlow',
-      home: Scaffold(body: Center(child: Column(
-        children: [
-          Text("KrakFlow"),
-          SizedBox(height: 20,),
-          Text("Organizacja studiów"),
-          SizedBox(height: 20,),
-          Text("Dzisiejsze zadania"),
-          TaskCard(
-              title: "Projekt Flutter",
-              subtitle: "Termin: jutro",
-              icon: Icons.task),
-          TaskCard(
-              title: "Ćwiczenia z matematyki",
-              subtitle: "Termin: dzisiaj",
-              icon: Icons.task),
-          TaskCard(
-              title: "Przeczytać o widgetach",
-              subtitle: "Termin: w tym tygodniu",
-              icon: Icons.task)
-      ])),
-          floatingActionButton: FloatingActionButton(onPressed: (){}, child: Icon(Icons.add)))
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 20, horizontal: 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("KrakFlow"),
+                SizedBox(height: 20),
+                Text("Organizacja studiów"),
+                SizedBox(height: 20),
+                Text("Masz w tej chwili ${tasks.length} zadań."),
+                SizedBox(height: 20),
+                Text("Wykonałeś ${tasks.where((task) => task.done).length} zadań."),
+                SizedBox(height: 20),
+                Text(
+                  "Dzisiejsze zadania",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: ListView.builder(
+                      itemCount: tasks.length,
+                      itemBuilder: (context, index) {
+                        Task task = tasks[index];
+                        return TaskCard(
+                          title: task.title,
+                          subtitle: "Termin: ${task.deadline} | Priorytet: ${task.priority}",
+                          icon: task.done
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () {},
+          child: Icon(Icons.add),
+        ),
+      ),
     );
   }
 }
 
-class TaskCard extends StatelessWidget{
+class TaskCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
 
-  TaskCard({required this.title, required this.subtitle, required this.icon});
+  const TaskCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
 
   @override
-  Widget build(BuildContext context){
+  Widget build(BuildContext context) {
     return Card(
       child: ListTile(
         leading: Icon(icon),
@@ -53,4 +128,18 @@ class TaskCard extends StatelessWidget{
       ),
     );
   }
+}
+
+class Task {
+  final String title;
+  final String deadline;
+  bool done;
+  String priority;
+
+  Task({
+    required this.title,
+    required this.deadline,
+    required this.done,
+    required this.priority,
+  });
 }
