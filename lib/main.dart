@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import './task_repository.dart';
+import './task.dart';
+import 'task_api_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -32,12 +34,12 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Masz w tej chwili ${TaskRepository.tasks.length} zadań."),
-              SizedBox(height: 20),
-              Text(
-                "Wykonałeś ${TaskRepository.tasks.where((task) => task.done).length} zadań.",
-              ),
-              SizedBox(height: 20),
+              //Text("Masz w tej chwili ${TaskRepository.tasks.length} zadań."),
+              //SizedBox(height: 20),
+              //Text(
+              //  "Wykonałeś ${TaskRepository.tasks.where((task) => task.done).length} zadań.",
+              //),
+              //SizedBox(height: 20),
               Text(
                 "Dzisiejsze zadania",
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -45,20 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.all(20),
-                  child: ListView.builder(
-                    itemCount: TaskRepository.tasks.length,
-                    itemBuilder: (context, index) {
-                      Task task = TaskRepository.tasks[index];
-                      return TaskCard(
-                        title: task.title,
-                        subtitle:
-                            "Termin: ${task.deadline} | Priorytet: ${task.priority}",
-                        icon: task.done
-                            ? Icons.check_circle
-                            : Icons.radio_button_unchecked,
-                      );
-                    },
-                  ),
+                  child: TaskListScreen(),
                 ),
               ),
             ],
@@ -155,26 +144,56 @@ class AddTaskScreen extends StatelessWidget {
   }
 }
 
-class TaskCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
+class TaskListScreen extends StatefulWidget {
+  const TaskListScreen({super.key});
 
-  const TaskCard({
-    super.key,
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
+  @override
+  State<TaskListScreen> createState() => _TaskListScreenState();
+}
+
+class _TaskListScreenState extends State<TaskListScreen> {
+  late Future<List<Task>> tasksFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    tasksFuture = TaskApiService.fetchTasks();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(subtitle),
-      ),
+    return FutureBuilder<List<Task>>(
+      future: tasksFuture,
+      builder: (context, snapshot){
+        if (snapshot.connectionState == ConnectionState.waiting){
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (snapshot.hasError){
+          return Center(
+            child: Text("Błąd: ${snapshot.error}"),
+          );
+        }
+
+        final tasks = snapshot.data!;
+
+        return ListView.builder(
+          itemCount: tasks.length,
+          itemBuilder: (context, index){
+            Task task = tasks[index];
+            return TaskCard(
+                title: task.title,
+                subtitle:
+                "Termin: ${task.deadline} | Priorytet: ${task.priority}",
+                icon: task.done
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked
+            );
+          },
+        );
+      },
     );
   }
 }
