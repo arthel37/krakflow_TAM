@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'models/task.dart';
-import 'services/task_api_service.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import '../services/task_sync_service.dart';
 import '../services/task_local_database.dart';
@@ -30,6 +29,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey<_TaskListScreenState> _taskListKey =
+      GlobalKey<_TaskListScreenState>();
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,12 +42,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              //Text("Masz w tej chwili ${TaskRepository.tasks.length} zadań."),
-              //SizedBox(height: 20),
-              //Text(
-              //  "Wykonałeś ${TaskRepository.tasks.where((task) => task.done).length} zadań.",
-              //),
-              //SizedBox(height: 20),
               Text(
                 "Dzisiejsze zadania",
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -53,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.all(20),
-                  child: TaskListScreen(),
+                  child: TaskListScreen(key: _taskListKey),
                 ),
               ),
             ],
@@ -69,14 +65,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   EditTaskScreen(),
               transitionsBuilder:
                   (context, animation, secondaryAnimation, child) {
-                return FadeTransition(opacity: animation, child: child);
-              },
+                    return FadeTransition(opacity: animation, child: child);
+                  },
             ),
           );
           if (newTask != null) {
-            setState(() {
-              TaskRepository.tasks.add(newTask);
-            });
+            await TaskLocalDatabase.addTask(newTask);
+            _taskListKey.currentState?.refreshList();
           }
         },
         child: Icon(Icons.add),
@@ -111,64 +106,68 @@ class _TaskListScreenState extends State<TaskListScreen> {
     await loadTasks();
   }
 
+  void refreshList() {
+    setState(() {
+      tasksFuture = loadTasks();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Task>>(
       future: tasksFuture,
-      builder: (context, snapshot){
-        if (snapshot.connectionState == ConnectionState.waiting){
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError){
-          return Center(
-            child: Text("Błąd: ${snapshot.error}"),
-          );
+        if (snapshot.hasError) {
+          return Center(child: Text("Błąd: ${snapshot.error}"));
         }
 
         final tasks = snapshot.data ?? [];
 
         return ListView.builder(
           itemCount: tasks.length,
-          itemBuilder: (context, index){
+          itemBuilder: (context, index) {
             Task task = tasks[index];
             return TaskCard(
-                title: task.title,
-                subtitle:
-                "Termin: ${task.deadline} | Priorytet: ${task.priority}",
-                icon: task.done
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
-                onChanged: (value) async {
-                  final updatedTask = Task(
-                    id: task.id,
-                    title: task.title,
-                    deadline: task.deadline,
-                    priority: task.priority,
-                    done: value ?? false
-                  );
+              title: task.title,
+              subtitle:
+                  "Termin: ${task.deadline} | Priorytet: ${task.priority}",
+              icon: task.done
+                  ? Icons.check_circle
+                  : Icons.radio_button_unchecked,
+              onChanged: (value) async {
+                final updatedTask = Task(
+                  id: task.id,
+                  title: task.title,
+                  deadline: task.deadline,
+                  priority: task.priority,
+                  done: value,
+                );
 
+                await TaskLocalDatabase.updateTask(updatedTask);
+
+                setState(() {
+                  tasksFuture = loadTasks();
+                });
+              },
+              onTap: () async {
+                final Task? updatedTask = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditTaskScreen(currTask: task),
+                  ),
+                );
+                if (updatedTask != null) {
                   await TaskLocalDatabase.updateTask(updatedTask);
-
                   setState(() {
                     tasksFuture = loadTasks();
                   });
-                },
-                onTap: () async {
-                  final Task? updatedTask = await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => EditTaskScreen(task: task),
-                    ),
-                  );
-                  if (updatedTask != null) {
-                    await TaskLocalDatabase.updateTask(updatedTask);
-                    setState(() {
-                      tasksFuture = loadTasks();
-                    });
-                  }
                 }
+              },
             );
           },
         );
@@ -177,13 +176,31 @@ class _TaskListScreenState extends State<TaskListScreen> {
   }
 }
 
-class EditTaskScreen extends StatelessWidget {
-  Task? currTask;
-  EditTaskScreen({super.key});
+class EditTaskScreen extends StatefulWidget {
+  final Task? currTask;
 
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController deadlineController = TextEditingController();
-  final TextEditingController priorityController = TextEditingController();
+  const EditTaskScreen({super.key, this.currTask});
+
+  @override
+  State<EditTaskScreen> createState() => _EditTaskScreenState();
+}
+
+class _EditTaskScreenState extends State<EditTaskScreen> {
+  late TextEditingController titleController;
+  late TextEditingController deadlineController;
+  late TextEditingController priorityController;
+
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.currTask?.title ?? '');
+    deadlineController = TextEditingController(
+      text: widget.currTask?.deadline ?? '',
+    );
+    priorityController = TextEditingController(
+      text: widget.currTask?.priority ?? '',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -227,11 +244,11 @@ class EditTaskScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 final newTask = Task(
-                  id: Random().nextInt(1000000),
+                  id: widget.currTask?.id ?? Random().nextInt(1000000),
                   title: titleController.text,
                   deadline: deadlineController.text,
                   priority: priorityController.text,
-                  done: false,
+                  done: widget.currTask?.done ?? false,
                 );
                 Navigator.pop(context, newTask);
               },
