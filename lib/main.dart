@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
-import './task_repository.dart';
-import './task.dart';
-import 'task_api_service.dart';
+import 'models/task.dart';
+import 'services/task_api_service.dart';
+import 'package:hive_ce_flutter/hive_flutter.dart';
+import '../services/task_sync_service.dart';
+import '../services/task_local_database.dart';
+import 'dart:math';
 
-void main() {
+void main() async {
+  await Hive.initFlutter();
+  await Hive.openBox("tasks");
+
   runApp(const MyApp());
 }
 
@@ -60,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
             context,
             PageRouteBuilder(
               pageBuilder: (context, animation, secondaryAnimation) =>
-                  AddTaskScreen(),
+                  EditTaskScreen(),
               transitionsBuilder:
                   (context, animation, secondaryAnimation, child) {
                 return FadeTransition(opacity: animation, child: child);
@@ -79,8 +85,101 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class AddTaskScreen extends StatelessWidget {
-  AddTaskScreen({super.key});
+class TaskListScreen extends StatefulWidget {
+  const TaskListScreen({super.key});
+
+  @override
+  State<TaskListScreen> createState() => _TaskListScreenState();
+}
+
+class _TaskListScreenState extends State<TaskListScreen> {
+  late Future<List<Task>> tasksFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    tasksFuture = loadTasks();
+  }
+
+  Future<List<Task>> loadTasks() async {
+    await TaskSyncService.loadInitialDataIfNeeded();
+    return TaskLocalDatabase.getTasks();
+  }
+
+  Future<void> addTask(Task task) async {
+    await TaskLocalDatabase.addTask(task);
+    await loadTasks();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Task>>(
+      future: tasksFuture,
+      builder: (context, snapshot){
+        if (snapshot.connectionState == ConnectionState.waiting){
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (snapshot.hasError){
+          return Center(
+            child: Text("Błąd: ${snapshot.error}"),
+          );
+        }
+
+        final tasks = snapshot.data ?? [];
+
+        return ListView.builder(
+          itemCount: tasks.length,
+          itemBuilder: (context, index){
+            Task task = tasks[index];
+            return TaskCard(
+                title: task.title,
+                subtitle:
+                "Termin: ${task.deadline} | Priorytet: ${task.priority}",
+                icon: task.done
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                onChanged: (value) async {
+                  final updatedTask = Task(
+                    id: task.id,
+                    title: task.title,
+                    deadline: task.deadline,
+                    priority: task.priority,
+                    done: value ?? false
+                  );
+
+                  await TaskLocalDatabase.updateTask(updatedTask);
+
+                  setState(() {
+                    tasksFuture = loadTasks();
+                  });
+                },
+                onTap: () async {
+                  final Task? updatedTask = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => EditTaskScreen(task: task),
+                    ),
+                  );
+                  if (updatedTask != null) {
+                    await TaskLocalDatabase.updateTask(updatedTask);
+                    setState(() {
+                      tasksFuture = loadTasks();
+                    });
+                  }
+                }
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class EditTaskScreen extends StatelessWidget {
+  Task? currTask;
+  EditTaskScreen({super.key});
 
   final TextEditingController titleController = TextEditingController();
   final TextEditingController deadlineController = TextEditingController();
@@ -128,6 +227,7 @@ class AddTaskScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 final newTask = Task(
+                  id: Random().nextInt(1000000),
                   title: titleController.text,
                   deadline: deadlineController.text,
                   priority: priorityController.text,
@@ -140,60 +240,6 @@ class AddTaskScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class TaskListScreen extends StatefulWidget {
-  const TaskListScreen({super.key});
-
-  @override
-  State<TaskListScreen> createState() => _TaskListScreenState();
-}
-
-class _TaskListScreenState extends State<TaskListScreen> {
-  late Future<List<Task>> tasksFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    tasksFuture = TaskApiService.fetchTasks();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<Task>>(
-      future: tasksFuture,
-      builder: (context, snapshot){
-        if (snapshot.connectionState == ConnectionState.waiting){
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError){
-          return Center(
-            child: Text("Błąd: ${snapshot.error}"),
-          );
-        }
-
-        final tasks = snapshot.data!;
-
-        return ListView.builder(
-          itemCount: tasks.length,
-          itemBuilder: (context, index){
-            Task task = tasks[index];
-            return TaskCard(
-                title: task.title,
-                subtitle:
-                "Termin: ${task.deadline} | Priorytet: ${task.priority}",
-                icon: task.done
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked
-            );
-          },
-        );
-      },
     );
   }
 }

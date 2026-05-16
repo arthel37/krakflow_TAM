@@ -1,7 +1,7 @@
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import './task.dart';
+import '../models/task.dart';
 import 'dart:math';
 
 String getRandomPriority() {
@@ -27,6 +27,7 @@ class TaskApiService {
 
       return todos.map((todo) {
         return Task(title: todo["todo"],
+            id: todo["id"],
             deadline: getRandomDeadline(),
             done: todo["completed"],
             priority: getRandomPriority());
